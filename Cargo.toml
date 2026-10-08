@@ -272,6 +272,8 @@ optional = true
 
 [target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies.xim]
 version = "0.4.0-zed"
+git = "https://github.com/ginwzy/zed-xim.git"
+rev = "9d9f91ac30e753fba6a81f6c364eed6bc9af73be"
 features = [
     "x11rb-xcb",
     "x11rb-client",

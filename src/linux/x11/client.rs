@@ -26,13 +26,14 @@ use x11rb::{
     cursor,
     errors::ConnectionError,
     protocol::randr::ConnectionExt as _,
+    protocol::xfixes::ConnectionExt as _,
     protocol::xinput::ConnectionExt,
     protocol::xkb::ConnectionExt as _,
     protocol::xproto::{
         AtomEnum, ChangeWindowAttributesAux, ClientMessageData, ClientMessageEvent,
         ConnectionExt as _, EventMask, Visibility,
     },
-    protocol::{Event, dri3, randr, render, xinput, xkb, xproto},
+    protocol::{Event, dri3, randr, render, xfixes, xinput, xkb, xproto},
     resource_manager::Database,
     wrapper::ConnectionExt as _,
     xcb_ffi::XCBConnection,
@@ -209,6 +210,7 @@ pub struct X11ClientState {
     keyboard_layout: LinuxKeyboardLayout,
     pub(crate) ximc: Option<X11rbClient<Rc<XCBConnection>>>,
     pub(crate) xim_handler: Option<XimHandler>,
+    xim_selection: Option<xproto::Atom>,
     pub modifiers: Modifiers,
     pub capslock: Capslock,
     // TODO: Can the other updates to `modifiers` be removed so that this is unnecessary?
@@ -464,6 +466,32 @@ impl X11Client {
 
         let xcb_connection = Rc::new(xcb_connection);
 
+        let xim_selection = (|| -> anyhow::Result<Option<xproto::Atom>> {
+            let Some(name) = std::env::var("XMODIFIERS")
+                .ok()
+                .and_then(|value| value.strip_prefix("@im=").map(str::to_owned))
+            else {
+                return Ok(None);
+            };
+            xcb_connection.xfixes_query_version(5, 0)?.reply()?;
+            let selection = xcb_connection
+                .intern_atom(false, format!("@server={name}").as_bytes())?
+                .reply()?
+                .atom;
+            let root = xcb_connection.setup().roots[x_root_index].root;
+            xcb_connection
+                .xfixes_select_selection_input(
+                    root,
+                    selection,
+                    xfixes::SelectionEventMask::SET_SELECTION_OWNER
+                        | xfixes::SelectionEventMask::SELECTION_WINDOW_DESTROY
+                        | xfixes::SelectionEventMask::SELECTION_CLIENT_CLOSE,
+                )?
+                .check()?;
+            Ok(Some(selection))
+        })()
+        .log_err()
+        .flatten();
         let ximc = X11rbClient::init(Rc::clone(&xcb_connection), x_root_index, None).ok();
         let xim_handler = if ximc.is_some() {
             Some(XimHandler::new())
@@ -549,6 +577,7 @@ impl X11Client {
             keyboard_layout,
             ximc,
             xim_handler,
+            xim_selection,
 
             compose_state,
             pre_edit_text: None,
@@ -668,6 +697,35 @@ impl X11Client {
 
             for event in events.into_iter() {
                 let mut state = self.0.borrow_mut();
+                if let Event::XfixesSelectionNotify(notification) = &event
+                    && state.xim_selection == Some(notification.selection)
+                {
+                    let composing_window = state
+                        .composing
+                        .then(|| {
+                            state
+                                .xim_handler
+                                .as_ref()
+                                .and_then(XimHandler::context)
+                                .map(|(_, _, window)| window)
+                        })
+                        .flatten();
+                    state.take_xim();
+                    state.composing = false;
+                    state.pre_key_char_down = None;
+                    if notification.owner != x11rb::NONE {
+                        let connection = Rc::clone(&state.xcb_connection);
+                        match X11rbClient::init(connection, state.x_root_index, None) {
+                            Ok(client) => state.restore_xim(client, XimHandler::new()),
+                            Err(error) => log::warn!("XIM reconnect failed: {error}"),
+                        }
+                    }
+                    drop(state);
+                    if let Some(window) = composing_window.and_then(|id| self.get_window(id)) {
+                        window.cancel_ime_composition();
+                    }
+                    continue;
+                }
                 if !state.has_xim() {
                     drop(state);
                     self.handle_event(event);

@@ -1244,6 +1244,17 @@ impl X11WindowStatePtr {
         }
     }
 
+    pub fn cancel_ime_composition(&self) {
+        let mut state = self.state.borrow_mut();
+        if let Some(mut input_handler) = state.input_handler.take() {
+            drop(state);
+            if input_handler.marked_text_range().is_some() {
+                input_handler.replace_text_in_range(None, "");
+            }
+            self.state.borrow_mut().input_handler = Some(input_handler);
+        }
+    }
+
     pub fn handle_ime_unmark(&self) {
         if self.is_blocked() {
             return;
