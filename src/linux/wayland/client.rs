@@ -665,9 +665,6 @@ impl WaylandClientStatePtr {
     pub fn update_ime_position(&self, bounds: Bounds<Pixels>) {
         let client = self.get_client();
         let mut state = client.borrow_mut();
-        if state.pre_edit_text.is_some() {
-            return;
-        }
         let Some(text_input) = state.text_input.clone() else {
             return;
         };

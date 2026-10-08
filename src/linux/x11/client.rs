@@ -278,7 +278,7 @@ impl X11ClientStatePtr {
             return;
         };
         let mut state = client.0.borrow_mut();
-        if state.composing || state.keyboard_focused_window != Some(window) {
+        if state.keyboard_focused_window != Some(window) {
             return;
         }
         if !state
@@ -1550,25 +1550,9 @@ impl X11Client {
         };
 
         let mut state = self.0.borrow_mut();
-        let (mut ximc, xim_handler) = state.take_xim()?;
         state.composing = !text.is_empty();
         drop(state);
         window.handle_ime_preedit(text);
-
-        if let Some(scaled_area) = window.get_ime_area() {
-            xim_handler
-                .update_position(
-                    &mut ximc,
-                    Some(xim::Point {
-                        x: u32::from(scaled_area.origin.x + scaled_area.size.width) as i16,
-                        y: u32::from(scaled_area.origin.y + scaled_area.size.height) as i16,
-                    }),
-                )
-                .log_err();
-        }
-        let mut state = self.0.borrow_mut();
-        state.restore_xim(ximc, xim_handler);
-        drop(state);
         Some(())
     }
 
