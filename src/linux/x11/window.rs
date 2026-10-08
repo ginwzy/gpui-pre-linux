@@ -1,3 +1,4 @@
+// Modified to associate candidate-position updates with their native window.
 use anyhow::{Context as _, anyhow};
 use x11rb::connection::RequestConnection;
 
@@ -1957,7 +1958,7 @@ impl PlatformWindow for X11Window {
         let state = self.0.state.borrow();
         let client = state.client.clone();
         drop(state);
-        client.update_ime_position(bounds);
+        client.update_ime_position(self.0.x_window, bounds);
     }
 
     fn gpu_specs(&self) -> Option<GpuSpecs> {
