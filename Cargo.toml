@@ -307,5 +307,4 @@ priority = 0
 
 [patch.crates-io]
 gpui-pre = { path = "../gpui-pre" }
-gpui-pre-wgpu = { path = "../gpui-pre-wgpu" }
 zed-xim = { path = "../zed-xim" }
