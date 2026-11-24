@@ -249,6 +249,7 @@ features = [
     "resource_manager",
     "sync",
     "dri3",
+    "xfixes",
 ]
 optional = true
 
@@ -286,3 +287,7 @@ priority = -1
 [lints.rust.unexpected_cfgs]
 level = "allow"
 priority = 0
+
+# Used for standalone backend checks. PD applies the same patch at its root.
+[patch.crates-io]
+zed-xim = { path = "../zed-xim" }
